@@ -1,13 +1,32 @@
-use nom::bits::{bits, streaming::{bool, take}};
-use nom::combinator::rest;
-use nom::error::{dbg_dmp, Error};
-use nom::IResult;
-use nom::multi::count;
-use nom::number::complete::{be_u16, be_u8, le_i16, le_u16, le_u8};
-use nom::sequence::tuple;
+use deku::prelude::*;
+use hexlit::hex;
 
-#[derive(Debug, PartialEq)]
+
+use crate::frisquet::proto::{FrisquetMetadata};
+use crate::frisquet::proto::common::{unhexify};
+
+#[derive(Debug, PartialEq, DekuRead, DekuWrite)]
+#[deku(ctx = "length: u8", id = "length")]
 pub enum ChaudierePayload {
+
+    #[deku(id = "11")]
+    ChaudiereAssociationBroadcast {
+        unknown: u8,
+        network_id: [u8;4]
+    },
+    #[deku(id = "15")]
+    ChaudiereSondeResponseMessage {
+        unknown_start: u8,
+        year: u8,
+        month: u8,
+        day: u8,
+        hour: u8,
+        minute: u8,
+        second: u8,
+        #[deku(count = "(length - 6) as usize - deku::byte_offset")]
+        data: Vec<u8>,
+    },
+    #[deku(id = "49")]
     ChaudiereSetTemperatureMessageResponse {
         unknown_start: [u8; 2],
         temperature_exterieure: i16,
@@ -23,71 +42,77 @@ pub enum ChaudierePayload {
         consigne: i16,
         unknown_2: [u8; 2],
         signature: [u8; 3],
-        static_part_2: [u8; 19],
+        static_part_2: [u8; 20],
 
+    },
+    #[deku(id_pat = "55")]
+    ChaudiereToSatelliteUnknownMessageResponse {
+        #[deku(count = "length - 6")]
+        data: Vec<u8>,
+    },
+
+    #[deku(id_pat = "_")]
+    ChaudiereUnknownMessage {
+        #[deku(count = "length - 6")]
+        data: Vec<u8>,
     },
 }
 
 
-pub fn parse_set_temperature_message_response(input: &[u8]) -> IResult<&[u8], ChaudierePayload> {
-    let (input, unknown_start) = count(be_u8, 2)(input)?;
-    let (input, temperature_exterieure) = le_i16(input)?;
-    let (input, unknown) = le_u8(input)?;
-    let (input, year) = le_u8(input)?;
-    let (input, month) = le_u8(input)?;
-    let (input, day) = le_u8(input)?;
-    let (input, hour) = le_u8(input)?;
-    let (input, minute) = le_u8(input)?;
-    let (input, second) = le_u8(input)?;
-    let (input, unknown_1) = count(be_u8, 3)(input)?;
-    let (input, temperature) = le_i16(input)?;
-    let (input, consigne) = le_i16(input)?;
-    let (input, unknown_2) = count(be_u8, 2)(input)?;
-    let (input, signature) = count(be_u8, 3)(input)?;
-    let (input, static_part_2) = count(be_u8, 19)(input)?;
-    let (input, remaining) = rest(input)?;
-    Ok((input, ChaudierePayload::ChaudiereSetTemperatureMessageResponse {
-        unknown_start: unknown_start.as_slice().try_into().unwrap(),
-        temperature_exterieure: temperature_exterieure,
-        unknown: unknown,
-        year: format!("{year:X}").parse::<u8>().unwrap(),
-        month: format!("{month:X}").parse::<u8>().unwrap(),
-        day: format!("{day:X}").parse::<u8>().unwrap(),
-        hour: hour,
-        minute: minute,
-        second: second,
-        unknown_1: unknown_1.as_slice().try_into().unwrap(),
-        temperature: temperature,
-        consigne: consigne,
-        unknown_2: unknown_2.as_slice().try_into().unwrap(),
-        signature: signature.as_slice().try_into().unwrap(),
-        static_part_2: static_part_2.as_slice().try_into().unwrap(),
-
-    }))
-}
-
-
-use crate::frisquet::proto::common::{parse_data, unhexify};
-use crate::frisquet::proto::FrisquetData;
-
 #[test]
 fn test() {
-    let (_, payload) = unhexify("310880194881172A050A0000230423171012000000C000BE002500C600C604F6000000000000000004F60000000000000000").unwrap();
-    let (_, payload) = dbg_dmp(parse_data, "data")(&payload.as_slice()).unwrap();
-    assert_eq!(payload.length, 49);
-    assert_eq!(payload.from_addr, 128);
-    assert_eq!(payload.to_addr, 8);
-    assert_eq!(payload.request_id, 6472);
-    assert_eq!(payload.req_or_answer, 129);
-    assert_eq!(payload.msg_type, 23);
-    // if let FrisquetData::Chaudiere(x) = payload.data {
-    //     // let c = x as ChaudierePayload::ChaudiereSetTemperatureMessageResponse;
-    //
-    //
-    //
-    //
-    // };
 
 
-    println!("Parsed input: {payload:?}");
+    let payload = unhexify("310880194881172A050A0000230423171012000000C000BE002500C600C604F6000000000000000004F60000000000000000");
+
+    let (rest, metadata) = FrisquetMetadata::from_bytes((payload.as_ref(), 0)).unwrap();
+    let (rest, message) = ChaudierePayload::read(deku::bitvec::BitSlice::from_slice(rest.0), metadata.length).unwrap();
+
+    assert_eq!(metadata, FrisquetMetadata {
+        length: 49,
+        to_addr: 8,
+        from_addr: 128,
+        request_id: 6472,
+        req_or_answer: 129,
+        msg_type: 23,
+    });
+    assert_eq!(message, ChaudierePayload::ChaudiereSetTemperatureMessageResponse {
+        unknown_start: [42, 5],
+        temperature_exterieure: 10,
+        unknown: 0,
+        year: 0x23,
+        month: 0x4,
+        day: 0x23,
+        hour: 23,
+        minute: 16,
+        second: 18,
+        unknown_1: [0, 0, 0],
+        temperature: 192,
+        consigne: 190,
+        unknown_2: [37, 0],
+        signature: [198, 0, 198],
+        static_part_2: [4, 246, 0, 0, 0, 0, 0, 0, 0, 0, 4, 246, 0, 0, 0, 0, 0, 0, 0, 0],
+    }
+    );
+
+    let mut res = metadata.to_bytes().unwrap();
+    let mut out = deku::bitvec::BitVec::with_capacity(message.deku_id().unwrap() as usize);
+    message.write(&mut out, message.deku_id().unwrap()).unwrap();
+    let mut out = out.into_vec();
+    res.append(&mut out);
+    assert_eq!(res, payload);
+    assert_eq!(res.len() - 1, metadata.length as usize)
+}
+
+#[test]
+fn testBroadcast() {
+    let payload = hex::decode("0b0080d3c802410405d7199e").unwrap();
+
+    let (rest, metadata) = FrisquetMetadata::from_bytes((payload.as_ref(), 0)).unwrap();
+    let (rest, message) = ChaudierePayload::read(deku::bitvec::BitSlice::from_slice(rest.0), metadata.length).unwrap();
+    assert_eq!(metadata, FrisquetMetadata { length: 11, to_addr: 0, from_addr: 128, request_id: 54216, req_or_answer: 2, msg_type: 65 });
+    assert_eq!(message, ChaudierePayload::ChaudiereAssociationBroadcast { unknown: 4, network_id: [5, 215, 25, 158] });
+    println!("{metadata:?}");
+    println!("{message:?}");
+
 }

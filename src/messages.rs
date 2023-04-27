@@ -9,18 +9,26 @@ pub struct DataMessage {
 }
 
 #[typetag::serde(tag = "type")]
-trait CommandMessage {}
+pub trait CommandMessage {}
 
 #[derive(Serialize, Deserialize)]
-struct Listen {}
+pub struct Listen {}
 
 #[typetag::serde(name = "LISTEN")]
 impl CommandMessage for Listen {}
 
 
+
 #[derive(Serialize, Deserialize)]
-struct SetNetworkId {
-    networkId: String,
+pub struct Sleep {}
+
+#[typetag::serde(name = "SLEEP")]
+impl CommandMessage for Sleep {}
+
+
+#[derive(Serialize, Deserialize)]
+pub struct SetNetworkId {
+    pub network_id: String,
 }
 
 #[typetag::serde(name = "SET_NETWORK_ID")]
@@ -28,8 +36,8 @@ impl CommandMessage for SetNetworkId {}
 
 
 #[derive(Serialize, Deserialize)]
-struct SendData {
-    data: String,
+pub struct SendData {
+    pub payload: String,
 }
 
 #[typetag::serde(name = "SEND")]
