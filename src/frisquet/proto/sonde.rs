@@ -13,6 +13,18 @@ pub enum SondePayload {
         #[deku(endian = "big")]
         temperature: i16,
     },
+
+    #[deku(id = "6")]
+    SondeAssociationAnnounceMessage {
+        #[deku(count = "0")]
+        data: Vec<u8>,
+    },
+
+    #[deku(id = "8")]
+    SondeInitMessage {
+        #[deku(count = "2")]
+        data: Vec<u8>,
+    },
     #[deku(id_pat = "_")]
     SondeUnknownMessage {
         #[deku(count = "length - 6")]
@@ -23,7 +35,7 @@ pub enum SondePayload {
 
 #[test]
 fn test() {
-    let payload = unhexify("118020878401179c540004a029000102009e");
+    let payload = unhexify("118020ba4001179c540004a029000102005c");
     // let (_, payload) = dbg_dmp(parse_data, "data")(&payload.as_slice()).unwrap();
 
     let (rest, metadata) = FrisquetMetadata::from_bytes((payload.as_ref(), 0)).unwrap();
@@ -40,4 +52,29 @@ fn test() {
     res.append(&mut out);
     assert_eq!(res, payload);
     assert_eq!(res.len() - 1, metadata.length as usize)
+}
+#[test]
+fn testAnnounceResponse() {
+    let payload = hex::decode("06802020948241").unwrap();
+
+    let (rest, metadata) = FrisquetMetadata::from_bytes((payload.as_ref(), 0)).unwrap();
+    let (rest, message) = SondePayload::read(deku::bitvec::BitSlice::from_slice(rest.0), metadata.length).unwrap();
+    assert_eq!(metadata, FrisquetMetadata { length: 6, to_addr: 128, from_addr: 32, request_id: 8340, req_or_answer: 130, msg_type: 65 });
+    assert_eq!(message, SondePayload::SondeUnknownMessage { data: vec![] });
+    println!("{metadata:?}");
+    println!("{message:?}");
+
+}
+
+#[test]
+fn testInit() {
+    let payload = hex::decode("088020830001430000").unwrap();
+
+    let (rest, metadata) = FrisquetMetadata::from_bytes((payload.as_ref(), 0)).unwrap();
+    let (rest, message) = SondePayload::read(deku::bitvec::BitSlice::from_slice(rest.0), metadata.length).unwrap();
+    assert_eq!(metadata, FrisquetMetadata { length: 8, to_addr: 128, from_addr: 32, request_id: 33536, req_or_answer: 1, msg_type: 67 });
+    assert_eq!(message, SondePayload::SondeInitMessage { data: vec![0,0] });
+    println!("{metadata:?}");
+    println!("{message:?}");
+
 }

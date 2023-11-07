@@ -1,0 +1,4 @@
+broker = "tcp://xx.xx.xx.xx:1883"
+mqtt_client = "rust_publish"
+mqtt_frisquet_topic = "frisquet/receive"
+network_id = "xxxxxxxx"

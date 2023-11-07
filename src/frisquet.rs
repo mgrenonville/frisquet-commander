@@ -11,6 +11,7 @@ pub mod proto;
 
 pub fn parse_data_from_str(input: &str) -> Result<(FrisquetMetadata, FrisquetData), deku::DekuError> {
     let payload = unhexify(input);
+    println!("Try to decrypt: {input}");
     let (rest, metadata) = FrisquetMetadata::from_bytes((payload.as_ref(), 0)).unwrap();
     let rest = deku::bitvec::BitSlice::from_slice(rest.0);
     match metadata.from_addr {

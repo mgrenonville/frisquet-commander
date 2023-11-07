@@ -20,9 +20,9 @@ pub enum SatellitePayload {
     },
 
     #[deku(id = "10")]
-    SatelliteUnknownMessage {
-        #[deku(count = "length - 6")]
-        data: Vec<u8>,
+    SatelliteAssocationAnnounceMessage {
+        unknown: u8,
+        version: [u8; 3],
     },
 
     #[deku(id = "23")]

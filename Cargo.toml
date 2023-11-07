@@ -9,6 +9,8 @@ edition = "2021"
 paho-mqtt = "0.12.1"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+config = "0.13.1"
+
 
 binascii = "0.1.4"
 typetag = "0.2"

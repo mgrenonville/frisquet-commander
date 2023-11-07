@@ -116,3 +116,15 @@ fn testBroadcast() {
     println!("{message:?}");
 
 }
+#[test]
+fn testResponse() {
+    let payload = hex::decode("0f2080ba408117082304051131172803").unwrap();
+
+    let (rest, metadata) = FrisquetMetadata::from_bytes((payload.as_ref(), 0)).unwrap();
+    let (rest, message) = ChaudierePayload::read(deku::bitvec::BitSlice::from_slice(rest.0), metadata.length).unwrap();
+    assert_eq!(metadata, FrisquetMetadata { length: 15, to_addr: 32, from_addr: 128, request_id: 47680, req_or_answer: 129, msg_type: 23 });
+    assert_eq!(message, ChaudierePayload::ChaudiereSondeResponseMessage { unknown_start: 8, year: 35, month: 4, day: 5, hour: 17, minute: 49, second: 23, data: [40, 3].to_vec() });
+    println!("{metadata:?}");
+    println!("{message:?}");
+
+}
