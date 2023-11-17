@@ -1,29 +1,23 @@
-extern crate paho_mqtt as mqtt;
-
-use std::{env, process, time, time::Duration};
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::thread::sleep;
+use std::time;
 
-use binascii::{bin2hex, hex2bin};
 use deku::prelude::*;
 use hex;
-use mqtt::{Client, Message, Receiver};
-use serde_json::Result;
 
 use config::Config;
 use frisquet::proto::FrisquetMetadata;
 
-// use serde_json::Value::String;
 use crate::frisquet::proto::chaudiere::ChaudierePayload;
-use crate::frisquet::proto::FrisquetData;
 use crate::frisquet::proto::satellite::SatellitePayload;
 use crate::frisquet::proto::sonde::SondePayload;
-use crate::messages::{CommandMessage, Listen, SendData, SetNetworkId, Sleep};
+use crate::frisquet::proto::FrisquetData;
+use crate::rf::RFClient;
 
-mod messages;
+pub mod rf;
+
 pub mod frisquet;
-
 fn main() {
     println!("Hello, world!");
     let settings = Config::builder()
@@ -33,57 +27,27 @@ fn main() {
         // Eg.. `APP_DEBUG=1 ./target/app` would set the `debug` key
         .add_source(config::Environment::with_prefix("APP"))
         .build()
-        .unwrap().try_deserialize::<HashMap<String, String>>()
+        .unwrap()
+        .try_deserialize::<HashMap<String, String>>()
         .unwrap();
 
+    let mut cli = rf_client(&settings).unwrap();
 
-    let host = env::args().nth(1).unwrap_or_else(||
-        settings.get("broker").unwrap().to_string()
-    );
-
-// Define the set of options for the create.
-// Use an ID for a persistent session.
-    let create_opts = mqtt::CreateOptionsBuilder::new()
-        .server_uri(host)
-        .client_id(settings.get("mqtt_client").unwrap().to_string())
-        .finalize();
-
-// Create a client.
-    let cli = mqtt::Client::new(create_opts).unwrap_or_else(|err| {
-        println!("Error creating the client: {:?}", err);
-        process::exit(1);
-    });
-    let rx: Receiver<Option<Message>> = cli.start_consuming();
-// Define the set of options for the connection.
-    let conn_opts = mqtt::ConnectOptionsBuilder::new()
-        .keep_alive_interval(Duration::from_secs(20))
-        .clean_session(true)
-        .finalize();
-
-// Connect and wait for it to complete or fail.
-    if let Err(e) = cli.connect(conn_opts) {
-        println!("Unable to connect:\n\t{:?}", e);
-        process::exit(1);
-    }
-
-    if let Err(e) = cli.subscribe(settings.get("mqtt_frisquet_topic").unwrap(), 0) {
-        println!("Error subscribes topics: {:?}", e);
-        process::exit(1);
-    }
-
-    // startAssociation(&cli, &rx);
+    // start_association(&cli, &rx);
     // sendTemperatureExt(&cli, &rx, true);
     let network_id = settings.get("network_id").unwrap().to_string();
 
-    publish(&cli, &SetNetworkId { network_id });
+    cli.set_network_id(hex::decode(network_id).expect("network_id should be hex"))
+        .unwrap();
     sleep(time::Duration::from_millis(1000));
-    publish(&cli, &Listen {});
 
     loop {
-        println!("loop");
-        let (metadata, x) = awaitMessage(&rx);
+        let msg = cli.receive().unwrap();
+        let (metadata, x) =
+            frisquet::parse_data_from_str(hex::encode(msg.clone()).as_str()).unwrap();
         // publish(&cli, &Listen {});
         //
+        // println!("{x:?}");
         println!("Received: {metadata:?} data: {x:?}");
         // if (metadata.length == 8 && metadata.to_addr == 32) {
         //     println!("Send announce message");
@@ -92,23 +56,26 @@ fn main() {
     }
 }
 
-fn publish(cli: &Client, value: &dyn CommandMessage) {
-    let json = serde_json::to_vec(
-        value
-    ).unwrap();
-
-    if let Err(e) = cli.publish(Message::new("frisquet/command",
-                                             json,
-                                             0)) {
-        println!("Error subscribes topics: {:?}", e);
-        process::exit(1);
+fn rf_client(settings: &HashMap<String, String>) -> Result<Box<dyn RFClient>, String> {
+    if settings.get("mqtt_client").is_some() {
+        Ok(Box::new(rf::mqtt::new(&settings)?))
+    } else if settings.get("serial_port").is_some() {
+        Ok(Box::new(rf::serial::new(&settings)?))
+    } else {
+        Err("no client configured".to_string())
     }
 }
 
-fn sendData<T>(cli: &Client, from: u8, to: u8, request_id: u16, req_or_answer: u8, msg_type: u8, message: T)
-    where
-        T: for<'a> DekuEnumExt<'a, (u8)> + DekuWrite<(u8)> + Debug
-
+fn send_data<T>(
+    client: &mut dyn RFClient,
+    from: u8,
+    to: u8,
+    request_id: u16,
+    req_or_answer: u8,
+    msg_type: u8,
+    message: T,
+) where
+    T: for<'a> DekuEnumExt<'a, u8> + DekuWrite<u8> + Debug,
 {
     let length = message.deku_id().unwrap();
     let mut out = deku::bitvec::BitVec::with_capacity(length as usize);
@@ -123,87 +90,120 @@ fn sendData<T>(cli: &Client, from: u8, to: u8, request_id: u16, req_or_answer: u
         req_or_answer: req_or_answer,
         msg_type: msg_type,
     };
-    let mut res = metadata.to_bytes().unwrap();
-    res.append(&mut out);
-    let payload = hex::encode(res);
-    println!("send: {metadata:?}, {message:?}, payload: {payload:?}");
+    let mut payload = metadata.to_bytes().unwrap();
+    payload.append(&mut out);
+    let data = hex::encode(payload.clone());
+    println!("send: {metadata:?}, {message:?}, payload: {data:?}");
 
-
-    publish(cli, &SendData { payload: payload })
+    client.send(payload).unwrap();
 }
 
-
-fn awaitMessage(rx: &Receiver<Option<Message>>) -> (FrisquetMetadata, FrisquetData) {
-    loop {
-        for msg in rx.iter() {
-            if let Some(msg) = msg {
-                let data: messages::DataMessage = serde_json::from_str(msg.payload_str().as_ref()).unwrap();
-                let parsed = frisquet::parse_data_from_str(data.data.as_str()).unwrap();
-                // println!("{parsed:?}");
-                return parsed;
-            }
-        }
-    }
-}
-
-fn sendTemperatureExt(cli: &Client, rx: &Receiver<Option<Message>>, plug: bool) {
-    let network_id = [5, 218, 46, 226];
-    publish(&cli, &Sleep {});
-    publish(&cli, &SetNetworkId { network_id: hex::encode(network_id) });
+fn send_temperature_ext(client: &mut dyn RFClient, plug: bool) {
+    let network_id: Vec<u8> = vec![5, 218, 46, 226];
+    client.sleep().unwrap();
+    client.set_network_id(network_id).unwrap();
     sleep(time::Duration::from_millis(1000));
-    publish(&cli, &Listen {});
-    sleep(time::Duration::from_millis(1000));
-    if (plug) {
-        sendData(cli, 32, 128, 33536, 1, 67, SondePayload::SondeInitMessage { data: vec![0, 0] });
-        let received = awaitMessage(rx);
-        println!("Received: {received:?}");
+
+    if plug {
+        send_data(
+            client,
+            32,
+            128,
+            33536,
+            1,
+            67,
+            SondePayload::SondeInitMessage { data: vec![0, 0] },
+        );
+        let msg = client.receive().unwrap();
+        let (metadata, x) = frisquet::parse_data_from_str(hex::encode(msg).as_str()).unwrap();
+        println!("Received: {metadata:?} data: {x:?}");
     }
     sleep(time::Duration::from_millis(3000));
 
-    sendData(cli, 32, 128, 6648, 1, 23, SondePayload::SondeTemperatureMessage { data: [156, 84, 0, 4, 160, 41, 0, 1, 2], temperature: 190 });
-    if let (metadata, FrisquetData::Chaudiere(data)) = awaitMessage(rx) {
+    send_data(
+        client,
+        32,
+        128,
+        6648,
+        1,
+        23,
+        SondePayload::SondeTemperatureMessage {
+            data: [156, 84, 0, 4, 160, 41, 0, 1, 2],
+            temperature: 190,
+        },
+    );
+
+    let msg = client.receive().unwrap();
+    if let (metadata, FrisquetData::Chaudiere(data)) =
+        frisquet::parse_data_from_str(hex::encode(msg).as_str()).unwrap()
+    {
         println!("Received: {metadata:?} data: {data:?}")
     }
-    publish(&cli, &Sleep {});
+    client.sleep().unwrap();
 }
 
-fn startAssociation(cli: &Client, rx: &Receiver<Option<Message>>) {
-    publish(&cli, &SetNetworkId { network_id: "ffffffff".to_string() });
+fn start_association(client: &mut dyn RFClient) {
+    let network_id: Vec<u8> = vec![0xff, 0xff, 0xff, 0xff];
+    client.set_network_id(network_id).unwrap();
     println!("Setting network_id to ffffffff");
-    publish(&cli, &Listen {});
-    println!("Waiting broadcast networkId message");
 
-    if let (metadata, FrisquetData::Chaudiere(data)) = awaitMessage(rx) {
-        publish(&cli, &Sleep {});
+    println!("Waiting broadcast networkId message");
+    let msg = client.receive().unwrap();
+    if let (metadata, FrisquetData::Chaudiere(data)) =
+        frisquet::parse_data_from_str(hex::encode(msg).as_str()).unwrap()
+    {
+        client.sleep().unwrap();
         println!("Received a message {data:?}");
 
-        if let ChaudierePayload::ChaudiereAssociationBroadcast { unknown, network_id } = data {
+        if let ChaudierePayload::ChaudiereAssociationBroadcast {
+            unknown: _,
+            network_id,
+        } = data
+        {
             println!("This is a ChaudiereAssociationBroadcast message, will announce");
-            sendData(cli, 32, 128, metadata.request_id, metadata.req_or_answer + 0x80, metadata.msg_type, SondePayload::SondeAssociationAnnounceMessage { data: vec![] });
-            let networkIdStr = hex::encode(network_id).to_string();
-            println!("Switch to networkId {networkIdStr}");
+            send_data(
+                client,
+                32,
+                128,
+                metadata.request_id,
+                metadata.req_or_answer + 0x80,
+                metadata.msg_type,
+                SondePayload::SondeAssociationAnnounceMessage { data: vec![] },
+            );
+            let network_id_str = hex::encode(network_id).to_string();
+            println!("Switch to networkId {network_id_str}");
 
-            publish(&cli, &SetNetworkId { network_id: networkIdStr });
+            client.set_network_id(Vec::from(network_id)).unwrap();
             sleep(time::Duration::from_millis(200));
-            println!("Start listening before sending message");
-            publish(&cli, &Listen {});
-            sleep(time::Duration::from_millis(200));
-            sendData(cli, 32, 128, 33536, 1, 67, SondePayload::SondeInitMessage { data: vec![0, 0] });
+            send_data(
+                client,
+                32,
+                128,
+                33536,
+                1,
+                67,
+                SondePayload::SondeInitMessage { data: vec![0, 0] },
+            );
             loop {
                 sleep(time::Duration::from_millis(1000));
-                sendData(
-                    cli, // le client MQTT
-                    32, // from
-                    128, // to
+                send_data(
+                    client,
+                    32,    // from
+                    128,   // to
                     34692, // request_id présent dans la trame de la chaudière
-                    1, // +0x80 en cas de réponse
-                    23, // le type du message en provenance de la chaudière
+                    1,     // +0x80 en cas de réponse
+                    23,    // le type du message en provenance de la chaudière
                     SondePayload::SondeTemperatureMessage {
                         data: [156, 84, 0, 4, 160, 41, 0, 1, 2], // des données qui semblent fixes
-                        temperature: 180, // la température exterieure, * 10
+                        temperature: 180,                        // la température exterieure, * 10
                     },
                 );
-                if let (metadata, FrisquetData::Chaudiere(data)) = awaitMessage(rx) {
+
+                let msg = client.receive().unwrap();
+
+                if let (metadata, FrisquetData::Chaudiere(data)) =
+                    frisquet::parse_data_from_str(hex::encode(msg).as_str()).unwrap()
+                {
                     println!("Received: {metadata:?} data: {data:?}");
                     return;
                 }
@@ -211,4 +211,3 @@ fn startAssociation(cli: &Client, rx: &Receiver<Option<Message>>) {
         }
     }
 }
-
