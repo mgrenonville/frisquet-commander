@@ -1,7 +1,6 @@
 extern crate serde;
 
 use serde::{Deserialize, Serialize};
-use serde_json::Result;
 
 #[derive(Serialize, Deserialize)]
 pub struct DataMessage {
@@ -17,14 +16,11 @@ pub struct Listen {}
 #[typetag::serde(name = "LISTEN")]
 impl CommandMessage for Listen {}
 
-
-
 #[derive(Serialize, Deserialize)]
 pub struct Sleep {}
 
 #[typetag::serde(name = "SLEEP")]
 impl CommandMessage for Sleep {}
-
 
 #[derive(Serialize, Deserialize)]
 pub struct SetNetworkId {
@@ -34,7 +30,6 @@ pub struct SetNetworkId {
 #[typetag::serde(name = "SET_NETWORK_ID")]
 impl CommandMessage for SetNetworkId {}
 
-
 #[derive(Serialize, Deserialize)]
 pub struct SendData {
     pub payload: String,
@@ -42,5 +37,3 @@ pub struct SendData {
 
 #[typetag::serde(name = "SEND")]
 impl CommandMessage for SendData {}
-
-

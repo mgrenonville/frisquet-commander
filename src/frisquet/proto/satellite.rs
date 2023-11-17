@@ -1,9 +1,4 @@
 use deku::prelude::*;
-use nom::{AsBytes, Slice};
-
-
-use crate::frisquet::proto::common::{unhexify};
-use crate::frisquet::proto::FrisquetMetadata;
 
 #[derive(Debug, PartialEq, DekuRead, DekuWrite)]
 #[deku(ctx = "length: u8", id = "length")]
@@ -53,19 +48,28 @@ pub enum SatellitePayload {
     },
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-#[test]
-fn testSatelliteSetTemperatureMessage() {
-    let payload = unhexify("17800819E40117A0290015A02F00040800B200AA002400C6");
-    let (rest, metadata) = FrisquetMetadata::from_bytes((payload.as_bytes(), 0)).unwrap();
+    use crate::frisquet::proto::common::unhexify;
+    use crate::frisquet::proto::FrisquetMetadata;
 
-    let (rest, mmm) = SatellitePayload::read(deku::bitvec::BitSlice::from_slice(rest.0), metadata.length).unwrap();
-    // assert_eq!(payload.length, 23);
-    // assert_eq!(payload.from_addr, 8);
-    // assert_eq!(payload.to_addr, 128);
-    // assert_eq!(payload.request_id, 6628);
-    // assert_eq!(payload.req_or_answer, 1);
-    // assert_eq!(payload.msg_type, 23);
-    println!("Parsed input: {metadata:?}");
-    println!("Parsed input: {mmm:?}");
+    #[test]
+    fn test_satellite_set_temperature_message() {
+        let payload = unhexify("17800819E40117A0290015A02F00040800B200AA002400C6");
+        let (rest, metadata) = FrisquetMetadata::from_bytes((payload.as_ref(), 0)).unwrap();
+
+        let (_rest, mmm) =
+            SatellitePayload::read(deku::bitvec::BitSlice::from_slice(rest.0), metadata.length)
+                .unwrap();
+        // assert_eq!(payload.length, 23);
+        // assert_eq!(payload.from_addr, 8);
+        // assert_eq!(payload.to_addr, 128);
+        // assert_eq!(payload.request_id, 6628);
+        // assert_eq!(payload.req_or_answer, 1);
+        // assert_eq!(payload.msg_type, 23);
+        println!("Parsed input: {metadata:?}");
+        println!("Parsed input: {mmm:?}");
+    }
 }
