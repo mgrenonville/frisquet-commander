@@ -1,14 +1,8 @@
 use nom::bytes::complete::take_while_m_n;
 use nom::combinator::map_res;
 use nom::error::{ErrorKind, ParseError};
-use nom::multi::{count, many0};
-use nom::number::complete::{be_u16, be_u8};
-use nom::Err::Error;
+use nom::multi::many0;
 use nom::IResult;
-
-use crate::frisquet::proto::chaudiere::ChaudierePayload;
-use crate::frisquet::proto::{FrisquetData, FrisquetMetadata, SatellitePayload};
-use hexlit::hex;
 
 #[derive(Debug, PartialEq)]
 pub enum CustomError<I> {
