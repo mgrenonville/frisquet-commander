@@ -4,8 +4,8 @@ use crate::frisquet::proto::chaudiere::ChaudierePayload;
 use crate::frisquet::proto::satellite::SatellitePayload;
 use crate::frisquet::proto::sonde::SondePayload;
 
-pub mod satellite;
 pub mod common;
+pub mod satellite;
 
 pub mod chaudiere;
 pub mod sonde;
@@ -27,4 +27,3 @@ pub struct FrisquetMetadata {
     pub req_or_answer: u8,
     pub msg_type: u8,
 }
-

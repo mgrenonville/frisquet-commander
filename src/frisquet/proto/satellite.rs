@@ -1,8 +1,7 @@
 use deku::prelude::*;
 use nom::{AsBytes, Slice};
 
-
-use crate::frisquet::proto::common::{unhexify};
+use crate::frisquet::proto::common::unhexify;
 use crate::frisquet::proto::FrisquetMetadata;
 
 #[derive(Debug, PartialEq, DekuRead, DekuWrite)]
@@ -20,10 +19,7 @@ pub enum SatellitePayload {
     },
 
     #[deku(id = "10")]
-    SatelliteAssocationAnnounceMessage {
-        unknown: u8,
-        version: [u8; 3],
-    },
+    SatelliteAssocationAnnounceMessage { unknown: u8, version: [u8; 3] },
 
     #[deku(id = "23")]
     SatelliteSetTemperatureMessage {
@@ -53,13 +49,14 @@ pub enum SatellitePayload {
     },
 }
 
-
 #[test]
 fn testSatelliteSetTemperatureMessage() {
     let payload = unhexify("17800819E40117A0290015A02F00040800B200AA002400C6");
     let (rest, metadata) = FrisquetMetadata::from_bytes((payload.as_bytes(), 0)).unwrap();
 
-    let (rest, mmm) = SatellitePayload::read(deku::bitvec::BitSlice::from_slice(rest.0), metadata.length).unwrap();
+    let (rest, mmm) =
+        SatellitePayload::read(deku::bitvec::BitSlice::from_slice(rest.0), metadata.length)
+            .unwrap();
     // assert_eq!(payload.length, 23);
     // assert_eq!(payload.from_addr, 8);
     // assert_eq!(payload.to_addr, 128);

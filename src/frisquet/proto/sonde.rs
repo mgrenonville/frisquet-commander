@@ -1,8 +1,7 @@
 use deku::prelude::*;
 
-
-use crate::frisquet::proto::{FrisquetMetadata};
-use crate::frisquet::proto::common::{unhexify};
+use crate::frisquet::proto::common::unhexify;
+use crate::frisquet::proto::FrisquetMetadata;
 
 #[derive(Debug, PartialEq, DekuRead, DekuWrite)]
 #[deku(ctx = "length: u8", id = "length")]
@@ -32,17 +31,32 @@ pub enum SondePayload {
     },
 }
 
-
 #[test]
 fn test() {
     let payload = unhexify("118020ba4001179c540004a029000102005c");
     // let (_, payload) = dbg_dmp(parse_data, "data")(&payload.as_slice()).unwrap();
 
     let (rest, metadata) = FrisquetMetadata::from_bytes((payload.as_ref(), 0)).unwrap();
-    let (rest, message) = SondePayload::read(deku::bitvec::BitSlice::from_slice(rest.0), metadata.length).unwrap();
+    let (rest, message) =
+        SondePayload::read(deku::bitvec::BitSlice::from_slice(rest.0), metadata.length).unwrap();
 
-    assert_eq!(metadata, FrisquetMetadata { length: 17, to_addr: 128, from_addr: 32, request_id: 34692, req_or_answer: 1, msg_type: 23 });
-    assert_eq!(message, SondePayload::SondeTemperatureMessage { data: [156, 84, 0, 4, 160, 41, 0, 1, 2], temperature: 158 }
+    assert_eq!(
+        metadata,
+        FrisquetMetadata {
+            length: 17,
+            to_addr: 128,
+            from_addr: 32,
+            request_id: 34692,
+            req_or_answer: 1,
+            msg_type: 23
+        }
+    );
+    assert_eq!(
+        message,
+        SondePayload::SondeTemperatureMessage {
+            data: [156, 84, 0, 4, 160, 41, 0, 1, 2],
+            temperature: 158
+        }
     );
 
     let mut res = metadata.to_bytes().unwrap();
@@ -58,12 +72,22 @@ fn testAnnounceResponse() {
     let payload = hex::decode("06802020948241").unwrap();
 
     let (rest, metadata) = FrisquetMetadata::from_bytes((payload.as_ref(), 0)).unwrap();
-    let (rest, message) = SondePayload::read(deku::bitvec::BitSlice::from_slice(rest.0), metadata.length).unwrap();
-    assert_eq!(metadata, FrisquetMetadata { length: 6, to_addr: 128, from_addr: 32, request_id: 8340, req_or_answer: 130, msg_type: 65 });
+    let (rest, message) =
+        SondePayload::read(deku::bitvec::BitSlice::from_slice(rest.0), metadata.length).unwrap();
+    assert_eq!(
+        metadata,
+        FrisquetMetadata {
+            length: 6,
+            to_addr: 128,
+            from_addr: 32,
+            request_id: 8340,
+            req_or_answer: 130,
+            msg_type: 65
+        }
+    );
     assert_eq!(message, SondePayload::SondeUnknownMessage { data: vec![] });
     println!("{metadata:?}");
     println!("{message:?}");
-
 }
 
 #[test]
@@ -71,10 +95,20 @@ fn testInit() {
     let payload = hex::decode("088020830001430000").unwrap();
 
     let (rest, metadata) = FrisquetMetadata::from_bytes((payload.as_ref(), 0)).unwrap();
-    let (rest, message) = SondePayload::read(deku::bitvec::BitSlice::from_slice(rest.0), metadata.length).unwrap();
-    assert_eq!(metadata, FrisquetMetadata { length: 8, to_addr: 128, from_addr: 32, request_id: 33536, req_or_answer: 1, msg_type: 67 });
-    assert_eq!(message, SondePayload::SondeInitMessage { data: vec![0,0] });
+    let (rest, message) =
+        SondePayload::read(deku::bitvec::BitSlice::from_slice(rest.0), metadata.length).unwrap();
+    assert_eq!(
+        metadata,
+        FrisquetMetadata {
+            length: 8,
+            to_addr: 128,
+            from_addr: 32,
+            request_id: 33536,
+            req_or_answer: 1,
+            msg_type: 67
+        }
+    );
+    assert_eq!(message, SondePayload::SondeInitMessage { data: vec![0, 0] });
     println!("{metadata:?}");
     println!("{message:?}");
-
 }
